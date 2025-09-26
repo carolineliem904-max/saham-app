@@ -409,7 +409,52 @@ def simulate_investment(histori_df, month, year, initial_money, target_date=None
     return df
 
 #===============================
-#5. MAIN MENU
+#5. CARI SAHAM 
+#===============================
+
+def cari_saham(histori_df, stock_code, year=None, month=None):
+    # pastikan tanggal dalam datetime
+    histori_df = histori_df.copy()
+    histori_df["Tanggal"] = pd.to_datetime(histori_df["Tanggal"])
+
+    # filter saham
+    stock_df = histori_df[histori_df["Nama_Saham"] == stock_code.upper()]
+    if stock_df.empty:
+        print(f"⚠️ Saham {stock_code} tidak ditemukan.")
+        return None
+
+    if year and month:
+        # cari harga berdasarkan tahun & bulan
+        entry = stock_df[
+            (stock_df["Tanggal"].dt.year == year) &
+            (stock_df["Tanggal"].dt.month == month)
+        ]
+        if entry.empty:
+            print(f"⚠️ Tidak ada data {stock_code} untuk {month}/{year}.")
+            return None
+        result = entry.iloc[0]
+        print("\n=== HASIL PENCARIAN SAHAM ===")
+        print(f"Saham      : {result['Nama_Saham']}")
+        print(f"Tanggal    : {result['Tanggal'].date()}")
+        print(f"Harga (Rp) : {result['Terakhir']}")
+        return result
+    else:
+        # ambil harga terakhir
+        latest = stock_df.sort_values("Tanggal").iloc[-1]
+        print("\n=== HARGA TERBARU SAHAM ===")
+        print(f"Saham      : {latest['Nama_Saham']}")
+        print(f"Tanggal    : {latest['Tanggal'].date()}")
+        print(f"Harga (Rp) : {latest['Terakhir']}")
+
+        # tampilkan mini history (misal 6 bulan terakhir)
+        history = stock_df.sort_values("Tanggal").tail(6)
+        print("\n--- Riwayat 6 bulan terakhir ---")
+        print(history[["Tanggal", "Terakhir"]].to_string(index=False))
+        return latest
+
+
+#===============================
+#6. MAIN MENU
 #===============================
 
 def main():
@@ -433,9 +478,10 @@ def main():
         print("4. Analisa kinerja pemilik & pertumbuhan saham")
         print("5. Visualisasi data")
         print("6. Simulasi Trading")
-        print("7. Keluar")
+        print("7. Cari Saham")
+        print("8. Keluar")
 
-        pilihan = input("Masukkan pilihan Anda (1-7): ")
+        pilihan = input("Masukkan pilihan Anda (1-8): ")
 
         if pilihan == "1":
             tampilkan_dataframe(engine, "kumpulan_saham", 100)
@@ -496,6 +542,7 @@ def main():
                     print("Tidak ada saham valid ditemukan dalam input.")
             else:
                 print("Pilihan tidak valid.")
+
         elif pilihan == "6":
             while True:
                 print("\n=== SIMULASI INVESTASI ===")
@@ -512,10 +559,21 @@ def main():
                     break
 
         elif pilihan == "7":
+            print("\n=== CARI SAHAM ===")
+            stock_code = input("Masukkan kode saham (contoh: BRMS): ").upper()
+            year_input = input("Masukkan tahun (enter jika ingin harga terbaru): ")
+            month_input = input("Masukkan bulan (1-12, enter jika ingin harga terbaru): ")
+
+            year = int(year_input) if year_input.strip() else None
+            month = int(month_input) if month_input.strip() else None
+
+            cari_saham(df_histori, stock_code, year, month)
+
+        elif pilihan == "8":
             print("Terima kasih, program dihentikan.")
             break
         else:
-            print("Pilihan tidak valid. Silakan masukkan 1-7.")
+            print("Pilihan tidak valid. Silakan masukkan 1-8.")
 
     engine.dispose()
 
