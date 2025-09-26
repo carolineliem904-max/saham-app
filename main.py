@@ -318,8 +318,98 @@ def plot_sector_marketcap_pie(df_kumpulan):
     plt.title("🥧 Proporsi Market Cap per Sektor", fontsize=14, weight="bold")
     plt.show()
 
+
 #===============================
-#4. MAIN MENU
+#4. SIMULASI TRADING
+#===============================
+
+import matplotlib.ticker as ticker
+
+def simulate_investment(histori_df, month, year, initial_money, target_date=None, show_plot=True):
+    results = []
+
+    # Pastikan Tanggal jadi datetime
+    histori_df = histori_df.copy()
+    histori_df["Tanggal"] = pd.to_datetime(histori_df["Tanggal"])
+
+    # Tentukan target_date otomatis jika tidak diberikan
+    if target_date is None:
+        target_date = histori_df["Tanggal"].max()
+    else:
+        target_date = pd.to_datetime(target_date)
+
+    # Ambil harga penutupan di target_date
+    target_prices = (
+        histori_df[histori_df["Tanggal"] == target_date]
+        .set_index("Nama_Saham")["Terakhir"]
+    )
+
+    for stock in histori_df["Nama_Saham"].unique():
+        entry_df = histori_df[
+            (histori_df["Nama_Saham"] == stock) &
+            (histori_df["Tanggal"].dt.month == month) &
+            (histori_df["Tanggal"].dt.year == year)
+        ]
+        if entry_df.empty or stock not in target_prices:
+            continue
+
+        entry_price = entry_df.iloc[0]["Terakhir"]
+        target_price = target_prices[stock]
+
+        shares = initial_money / entry_price
+        final_value = shares * target_price
+        profit_pct = (final_value - initial_money) / initial_money * 100
+
+        results.append({
+            "Nama_Saham": stock,
+            "Entry_Price": entry_price,
+            "Target_Price": target_price,
+            "Final_Value": round(final_value, 2),
+            "Return (%)": round(profit_pct, 2)
+        })
+
+    if not results:
+        print(f"\n⚠️ Tidak ada data saham untuk {month}/{year}. Coba bulan/tahun lain.")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(results).sort_values("Return (%)", ascending=False)
+
+    # === Plot Return (%) & Final Value ===
+    if show_plot and not df.empty:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+        # Left: Return %
+        axes[0].bar(df["Nama_Saham"], df["Return (%)"], color="skyblue")
+        axes[0].axhline(0, color="gray", linestyle="--")
+        axes[0].set_title(f"Return (%) dari {month}/{year} → {target_date.date()}")
+        axes[0].set_ylabel("Return (%)")
+        axes[0].tick_params(axis="x", rotation=45)
+
+        # Right: Final Value
+        axes[1].bar(df["Nama_Saham"], df["Final_Value"], color="lightgreen")
+        axes[1].set_title(f"Final Value (Rp) dari {month}/{year} → {target_date.date()}")
+        axes[1].set_ylabel("Rp")
+        axes[1].tick_params(axis="x", rotation=45)
+
+        # Format angka rupiah biar lebih enak dibaca
+        axes[1].yaxis.set_major_formatter(
+            ticker.FuncFormatter(lambda x, pos: f"{int(x):,}".replace(",", "."))
+        )
+
+        plt.tight_layout()
+        plt.show()
+    
+    # === Auto-summary ===
+    best = df.iloc[0]
+    worst = df.iloc[-1]
+    print("\n=== RINGKASAN SIMULASI ===")
+    print(f"📈 Best performer: {best['Nama_Saham']} ({best['Return (%)']}%) → Rp {best['Final_Value']:,}".replace(",", "."))
+    print(f"📉 Worst performer: {worst['Nama_Saham']} ({worst['Return (%)']}%) → Rp {worst['Final_Value']:,}".replace(",", "."))
+
+    return df
+
+#===============================
+#5. MAIN MENU
 #===============================
 
 def main():
@@ -342,9 +432,10 @@ def main():
         print("3. Hapus Saham")
         print("4. Analisa kinerja pemilik & pertumbuhan saham")
         print("5. Visualisasi data")
-        print("6. Keluar")
+        print("6. Simulasi Trading")
+        print("7. Keluar")
 
-        pilihan = input("Masukkan pilihan Anda (1-6): ")
+        pilihan = input("Masukkan pilihan Anda (1-7): ")
 
         if pilihan == "1":
             tampilkan_dataframe(engine, "kumpulan_saham", 100)
@@ -406,10 +497,25 @@ def main():
             else:
                 print("Pilihan tidak valid.")
         elif pilihan == "6":
+            while True:
+                print("\n=== SIMULASI INVESTASI ===")
+                month = int(input("Masukkan bulan entry (1-12): "))
+                year = int(input("Masukkan tahun entry (contoh: 2023): "))
+                money = float(input("Masukkan jumlah uang yang diinvestasikan (Rp): "))
+
+                result_df = simulate_investment(df_histori, month, year, money, show_plot=True)
+                print("\n=== HASIL SIMULASI ===")
+                print(result_df.to_string(index=False))
+
+                ulang = input("\nCoba simulasi lagi? (y/n): ").lower()
+                if ulang != "y":
+                    break
+
+        elif pilihan == "7":
             print("Terima kasih, program dihentikan.")
             break
         else:
-            print("Pilihan tidak valid. Silakan masukkan 1-6.")
+            print("Pilihan tidak valid. Silakan masukkan 1-7.")
 
     engine.dispose()
 
