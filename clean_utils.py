@@ -26,4 +26,16 @@ def clean_dataframe(df):
         if col in df.columns:
             df[col] = df[col].apply(convert_num)
 
+    # Bersihkan kolom tanggal -> dari dd/mm/yyyy ke yyyy-mm-dd
+    if "Tanggal" in df.columns:
+        df["Tanggal"] = pd.to_datetime(df["Tanggal"], dayfirst=True, errors="coerce")
+        df["Tanggal"] = df["Tanggal"].dt.strftime("%Y-%m-%d")
+
+    # Bersihkan kolom persentase (hapus % dan koma jadi titik)
+    for col in df.columns:
+        if df[col].dtype == "object" and df[col].str.contains("%").any():
+            df[col] = df[col].str.replace("%", "", regex=False)
+            df[col] = df[col].str.replace(",", ".", regex=False)
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
     return df
