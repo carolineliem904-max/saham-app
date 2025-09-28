@@ -54,7 +54,7 @@ def tampilkan_tabel(df, title="DATA", use_rich=True):
             for col in df.columns:
                 val = row[col]
                 # Format khusus angka besar
-                if col.lower() in ["volume", "market_cap", "vol", "final_value"]:
+                if col.lower() in ["volume", "market_cap", "vol", "final_value", "current_mcap", "target_mcap"]:
                     val = numerize.numerize(val)
                 elif isinstance(val, (int, float)):
                     val = f"{val:,}"
@@ -149,25 +149,6 @@ def hapus_saham(koneksi):
 # 2. ANALYSIS FUNCTIONS
 # ===============================
 
-# --- UNDERVALUE SAHAM --- 
-def find_undervalued_stocks(kumpulan_df):
-    undervalued = []
-    for sector in kumpulan_df['Sektor'].unique():
-        sector_df = kumpulan_df[kumpulan_df['Sektor'] == sector]
-        avg_mcap = sector_df['Market_Cap'].mean()
-
-        for _, row in sector_df.iterrows():
-            if row['Market_Cap'] < avg_mcap:
-                undervalued.append({
-                    'Nama_Saham': row['Nama_Saham'],
-                    'Sektor': sector,
-                    'Market_Cap': row['Market_Cap'],
-                    'Avg_Sector_Cap': avg_mcap,
-                    'Undervalued (%)': round((avg_mcap - row['Market_Cap']) / avg_mcap * 100, 2)
-                })
-
-    return pd.DataFrame(undervalued)
-
 # --- PERFORMA OWNER ---
 def owner_performance(histori_df, kumpulan_df):
     histori_df['Tanggal'] = pd.to_datetime(histori_df['Tanggal'])
@@ -206,7 +187,7 @@ def owner_performance(histori_df, kumpulan_df):
 
     return owner_perf, merged
 
-
+# --- STOCK GROWTH ---
 def stock_growth(histori_df, kumpulan_df):
     histori_df['Tanggal'] = pd.to_datetime(histori_df['Tanggal'])
 
@@ -236,43 +217,52 @@ def stock_growth(histori_df, kumpulan_df):
     )
     return growth.sort_values("Growth_2Y (%)", ascending=False)
 
-def max_sector_upside(kumpulan_df):
+# POTENSI UPSIDE PER SEKTOR ---
+def potensi_upside(kumpulan_df, top_n=None):
     results = []
-    
+
     for sector in kumpulan_df['Sektor'].unique():
         sector_df = kumpulan_df[kumpulan_df['Sektor'] == sector]
-        
+
         for _, row in sector_df.iterrows():
             current_stock = row['Nama_Saham']
             current_cap = row['Market_Cap']
-            
-            # cari saham dengan market cap tertinggi di sektor (selain dirinya sendiri)
+
+            # cari saham dengan market cap tertinggi di sektor (selain dirinya)
             others = sector_df[sector_df['Nama_Saham'] != current_stock]
             if others.empty:
-                continue  # kalau hanya ada 1 saham di sektor, skip
-            
+                continue
+
             max_target = others.sort_values('Market_Cap', ascending=False).iloc[0]
-            
+
             target_stock = max_target['Nama_Saham']
             target_cap = max_target['Market_Cap']
-            
+
             upside = round((target_cap - current_cap) / current_cap * 100, 2)
-            
+
             results.append({
                 'Nama_Saham': current_stock,
                 'Sektor': sector,
-                'Current_MCap': f"{current_cap:,.0f}",   # format pakai koma
+                'Current_MCap': current_cap,
                 'Target_Saham': target_stock,
-                'Target_MCap': f"{target_cap:,.0f}",
-                'Max_Upside (%)': f"{upside:+,.2f}%"    # selalu tampilkan + atau -
+                'Target_MCap': target_cap,
+                'Max_Upside (%)': upside
             })
-    
-    df = pd.DataFrame(results)
-    
-    # urutkan per sektor, lalu upside terbesar → kecil
-    df = df.sort_values(by=["Sektor", "Max_Upside (%)"], ascending=[True, False])
-    return df
 
+    df = pd.DataFrame(results)
+
+    if df.empty:
+        return df
+
+    # sort berdasarkan upside
+    df = df.sort_values(by="Max_Upside (%)", ascending=False)
+
+    # kalau hanya mau top N positif
+    if top_n is not None:
+        df = df[df["Max_Upside (%)"] > 0]  # ambil yang positif
+        df = df.head(top_n)
+
+    return df
 
 # ===============================
 # 3. VISUALIZATION FUNCTIONS
@@ -536,11 +526,11 @@ def main():
             growth_df = stock_growth(df_histori, df_kumpulan)
             tampilkan_tabel(growth_df, "Stock Growth (2Y)")
 
-            undervalue_df = find_undervalued_stocks(df_kumpulan)
-            tampilkan_tabel(undervalue_df, "Saham Undervalue (per sektor)")
-
-            upside_df = max_sector_upside(df_kumpulan)
+            upside_df = potensi_upside(df_kumpulan)   # versi lengkap
             tampilkan_tabel(upside_df, "Potensi Upside (per sektor)")
+
+            top_upside_df = potensi_upside(df_kumpulan, top_n=5)   # hanya top 5 positif
+            tampilkan_tabel(top_upside_df, "Top 5 Potensi Upside")
 
         elif pilihan == "5":
             print("\n--- MENU VISUALISASI ---")
