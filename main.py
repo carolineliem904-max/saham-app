@@ -6,8 +6,15 @@ from sqlalchemy import create_engine, MetaData, Table, insert, delete
 from dotenv import load_dotenv
 import os
 
+from rich.console import Console
+from rich.table import Table
+from numerize import numerize
+
+console = Console()
 # --- Load environment ---
 load_dotenv()
+
+console = Console()
 
 # ===============================
 # 1. DATABASE UTILITIES
@@ -28,22 +35,51 @@ def buat_koneksi():
         print(f"Terjadi error: '{e}'")
         return None
 
+# membuat tampilan dataframe jadi lebih mudah dibaca 
+def tampilkan_tabel(df, title="DATA", use_rich=True):
+    """Universal beautifier for any DataFrame"""
+    if df is None or df.empty:
+        print(f"\n⚠️ {title} kosong / tidak ada data.")
+        return
 
+    print(f"\n=== {title.upper()} ===")
+
+    if use_rich:
+        table = Table(show_header=True, header_style="bold cyan")
+        for col in df.columns:
+            table.add_column(str(col))
+
+        for _, row in df.iterrows():
+            formatted_row = []
+            for col in df.columns:
+                val = row[col]
+                # Format khusus angka besar
+                if col.lower() in ["volume", "market_cap", "vol", "final_value"]:
+                    val = numerize.numerize(val)
+                elif isinstance(val, (int, float)):
+                    val = f"{val:,}"
+                formatted_row.append(str(val))
+            table.add_row(*formatted_row)
+
+        console.print(table)
+    else:
+        print(df)
+
+# menampilkan dataframe 
 def tampilkan_dataframe(koneksi, nama_tabel, limit=None):
     """Menampilkan data dari tabel tertentu dalam bentuk DataFrame"""
     try:
         query = f"SELECT * FROM {nama_tabel} LIMIT {limit}"
         df = pd.read_sql(query, koneksi)
         print(f"\n=== DATA: {nama_tabel.upper()} ===")
-        print(df)
+        # print(df)
         return df
     except Exception as e:
         print(f"Terjadi error saat membaca {nama_tabel}: '{e}'")
         return None
 
 
-
-# fungsi tambah saham 
+# --- FUNGSI TAMBAH SAHAM ---
 def tambah_saham(koneksi):
     """Menambahkan data Saham baru menggunakan SQLAlchemy Core"""
     print("\n=== TAMBAH SAHAM BARU ===")
@@ -82,8 +118,7 @@ def tambah_saham(koneksi):
     except Exception as e:
         print(f"Terjadi error database: {e}")
 
-
-# fungsi delete saham 
+#  --- FUNGSI DELETE SAHAM ---
 
 def hapus_saham(koneksi):
     """Menghapus data saham dari tabel berdasarkan Nama_Saham"""
@@ -114,6 +149,7 @@ def hapus_saham(koneksi):
 # 2. ANALYSIS FUNCTIONS
 # ===============================
 
+# --- UNDERVALUE SAHAM --- 
 def find_undervalued_stocks(kumpulan_df):
     undervalued = []
     for sector in kumpulan_df['Sektor'].unique():
@@ -132,7 +168,7 @@ def find_undervalued_stocks(kumpulan_df):
 
     return pd.DataFrame(undervalued)
 
-
+# --- PERFORMA OWNER ---
 def owner_performance(histori_df, kumpulan_df):
     histori_df['Tanggal'] = pd.to_datetime(histori_df['Tanggal'])
 
@@ -155,9 +191,9 @@ def owner_performance(histori_df, kumpulan_df):
         how="left"
     )
 
-    merged["Growth_2Y (%)"] = (
+    merged["Growth_2Y (%)"] = ((
         (merged["Harga_Akhir"] - merged["Harga_Awal"]) /
-        merged["Harga_Awal"] * 100
+        merged["Harga_Awal"] * 100).round(2)
     )
 
     # hitung rata-rata growth per kepemilikan
@@ -169,6 +205,7 @@ def owner_performance(histori_df, kumpulan_df):
     )
 
     return owner_perf, merged
+
 
 def stock_growth(histori_df, kumpulan_df):
     histori_df['Tanggal'] = pd.to_datetime(histori_df['Tanggal'])
@@ -193,11 +230,10 @@ def stock_growth(histori_df, kumpulan_df):
     )
 
     # hitung growth, beri NaN kalau datanya tidak lengkap
-    growth["Growth_2Y (%)"] = (
+    growth["Growth_2Y (%)"] = ((
         (growth["Harga_Akhir"] - growth["Harga_Awal"]) /
-        growth["Harga_Awal"] * 100
+        growth["Harga_Awal"] * 100).round(2)
     )
-
     return growth.sort_values("Growth_2Y (%)", ascending=False)
 
 def max_sector_upside(kumpulan_df):
@@ -449,7 +485,7 @@ def cari_saham(histori_df, stock_code, year=None, month=None):
         # tampilkan mini history (misal 6 bulan terakhir)
         history = stock_df.sort_values("Tanggal").tail(6)
         print("\n--- Riwayat 6 bulan terakhir ---")
-        print(history[["Tanggal", "Terakhir"]].to_string(index=False))
+        tampilkan_tabel(history[["Tanggal", "Terakhir"]], "Riwayat 6 bulan terakhir")
         return latest
 
 
@@ -484,7 +520,8 @@ def main():
         pilihan = input("Masukkan pilihan Anda (1-8): ")
 
         if pilihan == "1":
-            tampilkan_dataframe(engine, "kumpulan_saham", 100)
+            tampilkan_tabel(tampilkan_dataframe(engine, "kumpulan_saham", 100), "Kumpulan Saham")
+            tampilkan_tabel(tampilkan_dataframe(engine, "histori_saham", 30), "Histori Saham")
 
         elif pilihan == "2":
             tambah_saham(engine)
@@ -494,20 +531,16 @@ def main():
 
         elif pilihan == "4":
             owner_perf, merged_detail = owner_performance(df_histori, df_kumpulan)
-            print("\n=== OWNER PERFORMANCE ===")
-            print(owner_perf.to_string())
+            tampilkan_tabel(owner_perf, "Owner Performance")
 
-            print("\n=== STOCK GROWTH (2Y) ===")
             growth_df = stock_growth(df_histori, df_kumpulan)
-            print(growth_df.to_string())
+            tampilkan_tabel(growth_df, "Stock Growth (2Y)")
 
-            print("\n=== SAHAM UNDERVALUE (per sektor) ===")
             undervalue_df = find_undervalued_stocks(df_kumpulan)
-            print(undervalue_df.to_string(index=False))
+            tampilkan_tabel(undervalue_df, "Saham Undervalue (per sektor)")
 
-            print("\n=== POTENSI UPSIDE (per sektor) ===")
             upside_df = max_sector_upside(df_kumpulan)
-            print(upside_df.to_string())
+            tampilkan_tabel(upside_df, "Potensi Upside (per sektor)")
 
         elif pilihan == "5":
             print("\n--- MENU VISUALISASI ---")
@@ -551,8 +584,7 @@ def main():
                 money = float(input("Masukkan jumlah uang yang diinvestasikan (Rp): "))
 
                 result_df = simulate_investment(df_histori, month, year, money, show_plot=True)
-                print("\n=== HASIL SIMULASI ===")
-                print(result_df.to_string(index=False))
+                tampilkan_tabel(result_df, "Hasil Simulasi")
 
                 ulang = input("\nCoba simulasi lagi? (y/n): ").lower()
                 if ulang != "y":
