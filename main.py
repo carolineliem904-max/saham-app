@@ -367,6 +367,76 @@ def plot_sector_marketcap_pie(df_kumpulan):
     plt.title("🥧 Proporsi Market Cap per Sektor", fontsize=14, weight="bold")
     plt.show()
 
+# heatmap return per saham
+def plot_monthly_return_heatmap(histori_df):
+    # make sure date is datetime
+    df = histori_df.copy()
+    df["Tanggal"] = pd.to_datetime(df["Tanggal"])
+
+    # calculate monthly return per stock
+    df["Month"] = df["Tanggal"].dt.to_period("M")
+    df = df.sort_values(["Nama_Saham", "Tanggal"])
+
+    df["Return"] = df.groupby("Nama_Saham")["Terakhir"].pct_change()
+
+    # average return per month
+    monthly_returns = (
+        df.groupby(["Nama_Saham", "Month"])["Return"]
+        .mean()
+        .reset_index()
+    )
+
+    # pivot for heatmap (stocks x months)
+    pivot = monthly_returns.pivot(index="Nama_Saham", columns="Month", values="Return")
+
+    plt.figure(figsize=(14, 8))
+    sns.heatmap(pivot, cmap="RdYlGn", center=0, annot=False, cbar_kws={"label": "Return"})
+    plt.title("🔥 Monthly Return Heatmap per Stock", fontsize=16, weight="bold")
+    plt.xlabel("Month")
+    plt.ylabel("Stock")
+    plt.tight_layout()
+    plt.show()
+
+# heatmap return per sektor 
+def plot_sector_monthly_return_heatmap(histori_df, kumpulan_df):
+    # copy data
+    df = histori_df.copy()
+    df["Tanggal"] = pd.to_datetime(df["Tanggal"])
+
+    # add Month column (period by month)
+    df["Month"] = df["Tanggal"].dt.to_period("M")
+
+    # hitung return per saham
+    df = df.sort_values(["Nama_Saham", "Tanggal"])
+    df["Return"] = df.groupby("Nama_Saham")["Terakhir"].pct_change()
+
+    # gabungkan sektor
+    df = pd.merge(df, kumpulan_df[["Nama_Saham", "Sektor"]], on="Nama_Saham", how="left")
+
+    # rata-rata return per sektor per bulan
+    monthly_sector_returns = (
+        df.groupby(["Sektor", "Month"])["Return"]
+        .mean()
+        .reset_index()
+    )
+
+    # pivot untuk heatmap (Sektor x Month)
+    pivot = monthly_sector_returns.pivot(index="Sektor", columns="Month", values="Return")
+
+    # plot heatmap
+    plt.figure(figsize=(14, 8))
+    sns.heatmap(
+        pivot,
+        cmap="RdYlGn",
+        center=0,
+        annot=False,
+        cbar_kws={"label": "Return"}
+    )
+    plt.title("🔥 Monthly Return Heatmap per Sector", fontsize=16, weight="bold")
+    plt.xlabel("Month")
+    plt.ylabel("Sector")
+    plt.tight_layout()
+    plt.show()
 
 #===============================
 #4. SIMULASI TRADING
@@ -561,7 +631,9 @@ def main():
             print("2. Volume vs Market Cap")
             print("3. Tren harga saham (pilih kode saham)")
             print("4. Tren harga beberapa saham (pilih kode saham)")
-            sub_pilihan = input("Pilih jenis visualisasi (1-4): ")
+            print("5. Heatmap return per saham")
+            print("6. Heatmap return per sektor")
+            sub_pilihan = input("Pilih jenis visualisasi (1-6): ")
 
             if sub_pilihan == "1":
                 plot_marketcap_by_sector(df_kumpulan)
@@ -586,6 +658,11 @@ def main():
                     plot_multiple_price_trends(df_histori, valid_stocks)
                 else:
                     print("Tidak ada saham valid ditemukan dalam input.")
+            elif sub_pilihan == "5":
+                plot_monthly_return_heatmap(df_histori)
+
+            elif sub_pilihan == "6":
+                plot_sector_monthly_return_heatmap(df_histori, df_kumpulan)
             else:
                 print("Pilihan tidak valid.")
 
