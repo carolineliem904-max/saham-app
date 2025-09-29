@@ -8,6 +8,7 @@ import os
 
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 from numerize import numerize
 
 console = Console()
@@ -53,17 +54,39 @@ def tampilkan_tabel(df, title="DATA", use_rich=True):
             formatted_row = []
             for col in df.columns:
                 val = row[col]
-                # Format khusus angka besar
+
+                # === Format angka besar jadi K/M/B/T ===
                 if col.lower() in ["volume", "market_cap", "vol", "final_value", "current_mcap", "target_mcap"]:
                     val = numerize.numerize(val)
+
+                # === Format persen growth/upside ===
+                elif "%" in col.lower():
+                    try:
+                        num = float(val)
+                        if num > 0:
+                            val = Text(f"{num:.2f}%", style="bold green")
+                        elif num < 0:
+                            val = Text(f"{num:.2f}%", style="bold red")
+                        else:
+                            val = Text(f"{num:.2f}%", style="white")
+                    except:
+                        val = Text(str(val), style="white")
+
+                # === Format angka biasa ===
                 elif isinstance(val, (int, float)):
                     val = f"{val:,}"
-                formatted_row.append(str(val))
+
+                else:
+                    val = str(val)
+
+                formatted_row.append(val)   # <-- keep Text objects here!
+
             table.add_row(*formatted_row)
 
         console.print(table)
     else:
         print(df)
+
 
 # menampilkan dataframe 
 def tampilkan_dataframe(koneksi, nama_tabel, limit=None):
