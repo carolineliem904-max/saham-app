@@ -573,7 +573,100 @@ def cari_saham(histori_df, stock_code, year=None, month=None):
 
 
 #===============================
-#6. MAIN MENU
+#6. IMPORT SAHAM DARI CSV FILE 
+#===============================
+
+from clean_utils import clean_dataframe
+from sqlalchemy import text
+
+# --- IMPORT DATA SAHAM ---
+def import_histori_csv(engine):
+    print("\n=== IMPORT HISTORI SAHAM DARI CSV ===")
+    file_path = input("Masukkan path CSV (contoh: sahamBbca.csv): ")
+
+    if not os.path.exists(file_path):
+        print("❌ File tidak ditemukan.")
+        return
+
+    try:
+        # Baca CSV
+        raw_df = pd.read_csv(file_path)
+
+        # --- Perbaiki nama kolom dari Investing.com ---
+        rename_map = {
+            "Vol.": "Vol",
+            "Perubahan%": "PerubahanPercent"
+        }
+        raw_df = raw_df.rename(columns=rename_map)
+
+        # Bersihkan dataframe
+        df_clean = clean_dataframe(raw_df)
+
+        # --- Deteksi nama saham dari filename ---
+        base = os.path.basename(file_path)      # contoh: "Data Historis BUMI.csv"
+        name = base.replace(".csv", "")
+        stock_code = name.split()[-1].upper()   # ambil kata terakhir → "BUMI"
+
+        df_clean["Nama_Saham"] = stock_code
+
+        # --- Safety check: apakah saham sudah ada di histori_saham? ---
+        with engine.connect() as conn:
+            existing = conn.execute(
+                text("SELECT COUNT(*) FROM histori_saham WHERE Nama_Saham = :saham"),
+                {"saham": stock_code}
+            ).scalar()
+
+        if existing > 0:
+            print(f"⚠️ Data histori untuk {stock_code} sudah ada ({existing} baris).")
+            choice = input("Pilih: [R]eplace / [A]ppend / [C]ancel ? ").strip().upper()
+
+            if choice == "R":
+                with engine.connect() as conn:
+                    conn.execute(
+                        text("DELETE FROM histori_saham WHERE Nama_Saham = :saham"),
+                        {"saham": stock_code}
+                    )
+                    conn.commit()
+                print(f"🗑 Data lama {stock_code} dihapus. Import ulang...")
+
+            elif choice == "C":
+                print("⏹ Import dibatalkan.")
+                return
+            else:
+                print("➕ Menambahkan data baru ke histori lama.")
+
+        # Simpan ke database
+        df_clean.to_sql("histori_saham", engine, if_exists="append", index=False)
+        print(f"✅ Data {stock_code} dari {file_path} berhasil di-import ke histori_saham")
+
+    except Exception as e:
+        print(f"❌ Gagal import: {e}")
+
+
+# --- DEL HISTORI SAHAM ---
+def hapus_histori_saham(engine):
+    print("\n=== HAPUS HISTORI SAHAM ===")
+    stock_code = input("Masukkan kode saham yang ingin dihapus (contoh: BBCA): ").upper()
+
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("DELETE FROM histori_saham WHERE Nama_Saham = :saham"),
+                {"saham": stock_code}
+            )
+            conn.commit()
+
+        if result.rowcount > 0:
+            print(f"✅ Data histori saham '{stock_code}' berhasil dihapus ({result.rowcount} baris).")
+        else:
+            print(f"⚠️ Tidak ada data histori untuk '{stock_code}' ditemukan.")
+
+    except Exception as e:
+        print(f"❌ Gagal menghapus data: {e}")
+
+
+#===============================
+#7. MAIN MENU
 #===============================
 
 def main():
@@ -592,19 +685,21 @@ def main():
     while True:
         print("\n=== MENU UTAMA ===")
         print("1. Tampilkan data saham")
-        print("2. Tambah saham baru")
-        print("3. Hapus Saham")
+        print("2. Tambah saham baru di kumpulan_saham")
+        print("3. Hapus Saham di kumpulan_saham")
         print("4. Analisa kinerja pemilik & pertumbuhan saham")
         print("5. Visualisasi data")
         print("6. Simulasi Trading")
         print("7. Cari Saham")
-        print("8. Keluar")
+        print("8. Import CSV ke histori_saham")
+        print("9. Hapus histori_saham")
+        print("10. Keluar")
 
-        pilihan = input("Masukkan pilihan Anda (1-8): ")
+        pilihan = input("Masukkan pilihan Anda (1-10): ")
 
         if pilihan == "1":
             tampilkan_tabel(tampilkan_dataframe(engine, "kumpulan_saham", 100), "Kumpulan Saham")
-            tampilkan_tabel(tampilkan_dataframe(engine, "histori_saham", 30), "Histori Saham")
+            tampilkan_tabel(tampilkan_dataframe(engine, "histori_saham", 1000), "Histori Saham")
 
         elif pilihan == "2":
             tambah_saham(engine)
@@ -690,12 +785,18 @@ def main():
             month = int(month_input) if month_input.strip() else None
 
             cari_saham(df_histori, stock_code, year, month)
-
+       
         elif pilihan == "8":
+            import_histori_csv(engine)
+
+        elif pilihan == "9":
+            hapus_histori_saham(engine)
+
+        elif pilihan == "10":
             print("Terima kasih, program dihentikan.")
             break
         else:
-            print("Pilihan tidak valid. Silakan masukkan 1-8.")
+            print("Pilihan tidak valid. Silakan masukkan 1-10.")
 
     engine.dispose()
 
