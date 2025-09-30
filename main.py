@@ -444,6 +444,7 @@ def plot_sector_monthly_return_heatmap(histori_df, kumpulan_df):
 
 import matplotlib.ticker as ticker
 
+# --- SIMULASI ALL SAHAM ---
 def simulate_investment(histori_df, month, year, initial_money, target_date=None, show_plot=True):
     results = []
 
@@ -526,6 +527,84 @@ def simulate_investment(histori_df, month, year, initial_money, target_date=None
     print(f"📉 Worst performer: {worst['Nama_Saham']} ({worst['Return (%)']}%) → Rp {worst['Final_Value']:,}".replace(",", "."))
 
     return df
+
+# --- SIMULASI PORTO ---
+def simulate_portfolio(histori_df, allocations, month, year, initial_money, target_date=None, show_plot=True):
+    """
+    Simulate portfolio investment.
+    
+    allocations: dict of {stock: weight}, e.g. {"BBRI": 0.4, "BBCA": 0.3, "BUMI": 0.3}
+    """
+    results = []
+    histori_df = histori_df.copy()
+    histori_df["Tanggal"] = pd.to_datetime(histori_df["Tanggal"])
+
+    if target_date is None:
+        target_date = histori_df["Tanggal"].max()
+    else:
+        target_date = pd.to_datetime(target_date)
+
+    # Ambil harga penutupan di target_date
+    target_prices = (
+        histori_df[histori_df["Tanggal"] == target_date]
+        .set_index("Nama_Saham")["Terakhir"]
+    )
+
+    portfolio_final_value = 0
+
+    for stock, weight in allocations.items():
+        entry_df = histori_df[
+            (histori_df["Nama_Saham"] == stock) &
+            (histori_df["Tanggal"].dt.month == month) &
+            (histori_df["Tanggal"].dt.year == year)
+        ]
+
+        if entry_df.empty or stock not in target_prices:
+            print(f"⚠️ Data {stock} tidak lengkap, dilewati.")
+            continue
+
+        entry_price = entry_df.iloc[0]["Terakhir"]
+        target_price = target_prices[stock]
+
+        invest_amount = initial_money * weight
+        shares = invest_amount / entry_price
+        final_value = shares * target_price
+        profit_pct = (final_value - invest_amount) / invest_amount * 100
+
+        portfolio_final_value += final_value
+
+        results.append({
+            "Nama_Saham": stock,
+            "Weight": f"{weight*100:.0f}%",
+            "Entry_Price": entry_price,
+            "Target_Price": target_price,
+            "Final_Value": round(final_value, 2),
+            "Return (%)": round(profit_pct, 2)
+        })
+
+    if not results:
+        print("❌ Tidak ada saham valid untuk simulasi portofolio.")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(results)
+
+    # Tambahkan ringkasan portofolio
+    total_return_pct = (portfolio_final_value - initial_money) / initial_money * 100
+    print("\n=== RINGKASAN PORTOFOLIO ===")
+    print(f"Modal awal : Rp {initial_money:,.0f}".replace(",", "."))
+    print(f"Nilai akhir: Rp {portfolio_final_value:,.0f}".replace(",", "."))
+    print(f"Total return: {total_return_pct:.2f}%")
+
+    if show_plot:
+        plt.figure(figsize=(8, 5))
+        plt.bar(df["Nama_Saham"], df["Return (%)"], color="skyblue")
+        plt.axhline(0, color="gray", linestyle="--")
+        plt.title(f"📊 Portfolio Return {month}/{year} → {target_date.date()}")
+        plt.ylabel("Return (%)")
+        plt.show()
+
+    return df
+
 
 #===============================
 #5. CARI SAHAM 
@@ -690,12 +769,13 @@ def main():
         print("4. Analisa kinerja pemilik & pertumbuhan saham")
         print("5. Visualisasi data")
         print("6. Simulasi Trading")
-        print("7. Cari Saham")
-        print("8. Import CSV ke histori_saham")
-        print("9. Hapus histori_saham")
-        print("10. Keluar")
+        print("7. Simulasi Portofolio")
+        print("8. Cari Saham")
+        print("9. Import CSV ke histori_saham")
+        print("10. Hapus histori_saham")
+        print("11. Keluar")
 
-        pilihan = input("Masukkan pilihan Anda (1-10): ")
+        pilihan = input("Masukkan pilihan Anda (1-11): ")
 
         if pilihan == "1":
             tampilkan_tabel(tampilkan_dataframe(engine, "kumpulan_saham", 100), "Kumpulan Saham")
@@ -774,8 +854,27 @@ def main():
                 ulang = input("\nCoba simulasi lagi? (y/n): ").lower()
                 if ulang != "y":
                     break
-
+        
         elif pilihan == "7":
+            while True:
+                print("\n=== SIMULASI PORTOFOLIO ===")
+                month = int(input("Masukkan bulan entry (1-12): "))
+                year = int(input("Masukkan tahun entry (contoh: 2023): "))
+                money = float(input("Masukkan modal awal (Rp): "))
+
+                print("Masukkan alokasi saham (contoh: BBRI=0.4, BBCA=0.3, DEWA=0.3)")
+                alloc_input = input("Alokasi: ")
+                allocations = {part.split("=")[0].strip().upper(): float(part.split("=")[1])
+                            for part in alloc_input.split(",")}
+
+                result_df = simulate_portfolio(df_histori, allocations, month, year, money, show_plot=True)
+                tampilkan_tabel(result_df, "Hasil Simulasi Portofolio")
+                
+                ulang = input("\nCoba simulasi lagi? (y/n): ").lower()
+                if ulang != "y":
+                        break
+
+        elif pilihan == "8":
             print("\n=== CARI SAHAM ===")
             stock_code = input("Masukkan kode saham (contoh: BRMS): ").upper()
             year_input = input("Masukkan tahun (enter jika ingin harga terbaru): ")
@@ -786,17 +885,17 @@ def main():
 
             cari_saham(df_histori, stock_code, year, month)
        
-        elif pilihan == "8":
+        elif pilihan == "9":
             import_histori_csv(engine)
 
-        elif pilihan == "9":
+        elif pilihan == "10":
             hapus_histori_saham(engine)
 
-        elif pilihan == "10":
+        elif pilihan == "11":
             print("Terima kasih, program dihentikan.")
             break
         else:
-            print("Pilihan tidak valid. Silakan masukkan 1-10.")
+            print("Pilihan tidak valid. Silakan masukkan 1-11.")
 
     engine.dispose()
 
